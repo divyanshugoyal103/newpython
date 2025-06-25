@@ -487,15 +487,14 @@ class DataAnalyzerApp:
         with col2:
             fig = px.box(df, y=col, title=f"Box Plot of {col}")
             st.plotly_chart(fig, use_container_width=True)
-        
-        # Enhanced normality check with Q-Q plot
+                # Enhanced normality check with Q-Q plot
         st.subheader("Normality Check")
         qq_data = df[col].dropna()
         qq_data = (qq_data - qq_data.mean()) / qq_data.std()
         
         fig = go.Figure()
         fig.add_trace(go.Scatter(
-            x=np.sort(stats.norm.ppf(np.linspace(0.01, 0.99, len(qq_data))),
+            x=np.sort(stats.norm.ppf(np.linspace(0.01, 0.99, len(qq_data)))),
             y=np.sort(qq_data),
             mode='markers',
             name='Data'
