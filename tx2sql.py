@@ -162,51 +162,118 @@ class UniversalTextToSQLConverter:
         text = text.strip()
         text_lower = text.lower()
         
-        # Detect table
-        detected_table = self.detect_table_from_text(text, tables)
+        # Debug: Add logging to see what's happening
+        print(f"DEBUG: Input text: '{text}'")
+        print(f"DEBUG: Available tables: {tables}")
+        print(f"DEBUG: Available columns: {columns}")
+        
+        # Detect table - improved logic
+        detected_table = None
+        
+        # First try exact table name match
+        for table in tables:
+            if table.lower() in text_lower:
+                detected_table = table
+                break
+        
+        # If no exact match, try fuzzy matching
         if not detected_table:
-            # If no table detected, try to infer from columns
-            for table, cols in columns.items():
-                if any(col.lower() in text_lower for col in cols):
-                    detected_table = table
+            table_keywords = {
+                'employee': ['employee', 'staff', 'worker', 'person', 'people', 'emp'],
+                'product': ['product', 'item', 'goods', 'merchandise', 'prod'],
+                'order': ['order', 'purchase', 'transaction', 'sale'],
+                'customer': ['customer', 'client', 'user', 'buyer'],
+            }
+            
+            for table in tables:
+                table_lower = table.lower()
+                # Check if any keyword matches the table name
+                for category, keywords in table_keywords.items():
+                    if category in table_lower:
+                        for keyword in keywords:
+                            if keyword in text_lower:
+                                detected_table = table
+                                break
+                        if detected_table:
+                            break
+                if detected_table:
                     break
         
+        # If still no table, infer from column names
+        if not detected_table:
+            for table, cols in columns.items():
+                for col in cols:
+                    if col.lower() in text_lower:
+                        detected_table = table
+                        break
+                if detected_table:
+                    break
+        
+        # Default to first table if none detected
         if not detected_table and tables:
-            detected_table = tables[0]  # Default to first table
+            detected_table = tables[0]
         
         if not detected_table:
-            return "-- No table detected. Please specify a table name."
+            return "-- ERROR: No table found. Available tables: " + ", ".join(tables)
+        
+        print(f"DEBUG: Detected table: {detected_table}")
         
         table_columns = columns[detected_table]
         
         # Build SELECT clause
         select_part = "SELECT *"
-        mentioned_columns = self.detect_columns_from_text(text, table_columns)
+        mentioned_columns = []
         
+        # Look for specific columns mentioned
+        for col in table_columns:
+            if col.lower() in text_lower:
+                mentioned_columns.append(col)
+        
+        # If specific columns mentioned, use them
         if mentioned_columns:
             select_part = f"SELECT {', '.join(mentioned_columns)}"
         
-        # Handle aggregation functions
-        if any(word in text_lower for word in ['count', 'total', 'how many']):
+        print(f"DEBUG: Mentioned columns: {mentioned_columns}")
+        
+        # Handle aggregation functions - more comprehensive
+        aggregation_found = False
+        
+        if any(word in text_lower for word in ['count', 'total', 'how many', 'number of']):
             if 'distinct' in text_lower and mentioned_columns:
                 select_part = f"SELECT COUNT(DISTINCT {mentioned_columns[0]})"
             else:
                 select_part = "SELECT COUNT(*)"
-        elif any(word in text_lower for word in ['sum', 'total of', 'add up']):
-            if mentioned_columns:
+            aggregation_found = True
+            
+        elif any(word in text_lower for word in ['sum', 'total of', 'add up', 'sum of']):
+            # Find numeric columns for SUM
+            numeric_cols = [col for col in mentioned_columns if any(num_word in col.lower() for num_word in ['price', 'salary', 'amount', 'cost', 'value', 'quantity'])]
+            if numeric_cols:
+                select_part = f"SELECT SUM({numeric_cols[0]})"
+            elif mentioned_columns:
                 select_part = f"SELECT SUM({mentioned_columns[0]})"
+            aggregation_found = True
+            
         elif any(word in text_lower for word in ['average', 'mean', 'avg']):
-            if mentioned_columns:
+            numeric_cols = [col for col in mentioned_columns if any(num_word in col.lower() for num_word in ['price', 'salary', 'amount', 'cost', 'value', 'age', 'quantity'])]
+            if numeric_cols:
+                select_part = f"SELECT AVG({numeric_cols[0]})"
+            elif mentioned_columns:
                 select_part = f"SELECT AVG({mentioned_columns[0]})"
-        elif any(word in text_lower for word in ['maximum', 'max', 'highest']):
+            aggregation_found = True
+            
+        elif any(word in text_lower for word in ['maximum', 'max', 'highest', 'largest']):
             if mentioned_columns:
                 select_part = f"SELECT MAX({mentioned_columns[0]})"
-        elif any(word in text_lower for word in ['minimum', 'min', 'lowest']):
+            aggregation_found = True
+            
+        elif any(word in text_lower for word in ['minimum', 'min', 'lowest', 'smallest']):
             if mentioned_columns:
                 select_part = f"SELECT MIN({mentioned_columns[0]})"
+            aggregation_found = True
         
         # Handle DISTINCT
-        if 'distinct' in text_lower or 'unique' in text_lower:
+        if not aggregation_found and ('distinct' in text_lower or 'unique' in text_lower):
             if mentioned_columns:
                 select_part = f"SELECT DISTINCT {', '.join(mentioned_columns)}"
             else:
@@ -215,23 +282,59 @@ class UniversalTextToSQLConverter:
         # Build FROM clause
         from_part = f"FROM {detected_table}"
         
-        # Build WHERE clause
-        conditions = self.extract_conditions(text, table_columns)
-        where_part = ""
-        if conditions:
-            where_part = f"WHERE {' AND '.join(conditions)}"
+        # Build WHERE clause - improved condition detection
+        where_conditions = []
         
-        # Handle GROUP BY
-        group_by_part = ""
-        if any(phrase in text_lower for phrase in ['group by', 'grouped by', 'by each']):
-            if mentioned_columns:
-                group_by_part = f"GROUP BY {mentioned_columns[0]}"
+        # Look for numeric conditions with more patterns
+        numeric_patterns = [
+            (r'(\w+)\s+(?:greater than|more than|above|over|>)\s+(\d+)', '>'),
+            (r'(\w+)\s+(?:less than|fewer than|below|under|<)\s+(\d+)', '<'),
+            (r'(\w+)\s+(?:equal to|equals|is|=)\s+(\d+)', '='),
+            (r'(\w+)\s+(?:not equal|not equals|different|!=)\s+(\d+)', '!='),
+            (r'(?:greater than|more than|above|over|>)\s+(\d+)', '>'),  # Without column specified
+            (r'(?:less than|fewer than|below|under|<)\s+(\d+)', '<'),   # Without column specified
+        ]
+        
+        for pattern, operator in numeric_patterns:
+            matches = re.findall(pattern, text_lower)
+            for match in matches:
+                if len(match) == 2:  # Column and value
+                    column_word, value = match
+                    # Find matching column
+                    matching_col = None
+                    for col in table_columns:
+                        if column_word in col.lower() or col.lower() in column_word:
+                            matching_col = col
+                            break
+                    if matching_col:
+                        where_conditions.append(f"{matching_col} {operator} {value}")
+                else:  # Just value, find numeric column
+                    value = match[0] if isinstance(match, tuple) else match
+                    numeric_cols = [col for col in table_columns if any(num_word in col.lower() for num_word in ['price', 'salary', 'amount', 'cost', 'value', 'age', 'quantity', 'id'])]
+                    if numeric_cols:
+                        where_conditions.append(f"{numeric_cols[0]} {operator} {value}")
+        
+        # Look for string conditions in department, category, etc.
+        department_matches = re.findall(r'(?:in|from)\s+([a-zA-Z]+(?:\s+[a-zA-Z]+)*)', text_lower)
+        for dept in department_matches:
+            dept = dept.strip()
+            if len(dept) > 2:  # Avoid short words
+                # Find text columns
+                text_cols = [col for col in table_columns if any(text_word in col.lower() for text_word in ['department', 'category', 'type', 'status', 'name'])]
+                if text_cols:
+                    where_conditions.append(f"{text_cols[0]} = '{dept.title()}'")
+        
+        where_part = ""
+        if where_conditions:
+            where_part = f"WHERE {' AND '.join(where_conditions)}"
+        
+        print(f"DEBUG: WHERE conditions: {where_conditions}")
         
         # Handle ORDER BY
         order_by_part = ""
-        if any(phrase in text_lower for phrase in ['order by', 'sort by', 'sorted by', 'arrange by']):
+        if any(phrase in text_lower for phrase in ['order by', 'sort by', 'sorted by', 'arrange by', 'sort']):
             if mentioned_columns:
-                direction = "DESC" if any(word in text_lower for word in ['desc', 'descending', 'highest first', 'largest first']) else "ASC"
+                direction = "DESC" if any(word in text_lower for word in ['desc', 'descending', 'highest first', 'largest first', 'high to low']) else "ASC"
                 order_by_part = f"ORDER BY {mentioned_columns[0]} {direction}"
         
         # Handle LIMIT
@@ -239,10 +342,16 @@ class UniversalTextToSQLConverter:
         limit_numbers = re.findall(r'(?:top|first|limit)\s+(\d+)', text_lower)
         if limit_numbers:
             limit_part = f"LIMIT {limit_numbers[0]}"
+        elif any(word in text_lower for word in ['top 5', 'first 5']):
+            limit_part = "LIMIT 5"
+        elif any(word in text_lower for word in ['top 10', 'first 10']):
+            limit_part = "LIMIT 10"
         
         # Construct final query
-        query_parts = [select_part, from_part, where_part, group_by_part, order_by_part, limit_part]
+        query_parts = [select_part, from_part, where_part, order_by_part, limit_part]
         sql_query = ' '.join([part for part in query_parts if part])
+        
+        print(f"DEBUG: Final query: {sql_query}")
         
         return sql_query
 
@@ -500,10 +609,29 @@ def main():
         
         if st.button("🔄 Convert to SQL", type="primary"):
             if user_query:
-                converter = UniversalTextToSQLConverter()
-                sql_query = converter.parse_natural_language(user_query, tables, columns)
-                st.session_state.generated_sql = sql_query
-                st.rerun()
+                try:
+                    converter = UniversalTextToSQLConverter()
+                    
+                    # Show debug info
+                    with st.expander("🔍 Debug Information"):
+                        st.write("**Input Text:**", user_query)
+                        st.write("**Available Tables:**", tables)
+                        st.write("**Available Columns:**", columns)
+                    
+                    sql_query = converter.parse_natural_language(user_query, tables, columns)
+                    st.session_state.generated_sql = sql_query
+                    
+                    if sql_query.startswith("-- ERROR"):
+                        st.error(sql_query)
+                    else:
+                        st.success("✅ SQL query generated successfully!")
+                    
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error generating SQL: {str(e)}")
+                    st.write("**Debug Info:**")
+                    st.write(f"Tables: {tables}")
+                    st.write(f"Columns: {columns}")
             else:
                 st.warning("Please enter a query first!")
     
