@@ -8,3 +8,4 @@ xlsxwriter
 streamlit-aggrid
  scipy
 scikit-learn
+statsmodels
