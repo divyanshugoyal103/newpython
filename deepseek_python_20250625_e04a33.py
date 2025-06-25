@@ -223,41 +223,43 @@ class EnhancedDataAnalyzer:
         }
         self.analysis_results = {}
     
-    # Improved data loading with better error handling
-    def load_data(self, file):
-        self.file_info['name'] = file.name
-        self.file_info['type'] = self._detect_file_type(file)
-        self.file_info['hash'] = hashlib.md5(file.read()).hexdigest()
-        file.seek(0)
-        
-        # Check cache
-        cached = app_state.get_cached_data(self.file_info['hash'])
-        if cached:
-            st.info("📦 Loading from cache...")
-            self.data = cached['data']
-            self.file_info.update(cached['file_info'])
-            return True
-        
-        try:
-            loader = {
-                'csv': self._load_csv,
-                'excel': self._load_excel,
-                'json': self._load_json,
-                'xml': self._load_xml,
-                'parquet': self._load_parquet,
-                'text': self._load_text,
-                'zip': self._load_zip
-            }.get(self.file_info['type'], self._load_unknown)
-            
-            success = loader(file)
-            if success:
-                self._cache_data()
-            return success
-            
-        except Exception as e:
-            st.error(f"Error loading file: {str(e)}")
-            return False
+   def load_data(self, file):
+    """Load data from file with caching and type detection"""
+    self.file_info = {
+        'name': file.name,
+        'type': self._detect_file_type(file),
+        'hash': hashlib.md5(file.read()).hexdigest(),
+        'sheets': None
+    }
+    file.seek(0)  # Reset file pointer after reading for hash
     
+    # Check cache first
+    cached = app_state.get_cached_data(self.file_info['hash'])
+    if cached:
+        st.info("📦 Loading from cache...")
+        self.data = cached['data']
+        self.file_info.update(cached['file_info'])
+        return True
+    
+    try:
+        loader = {
+            'csv': self._load_csv,
+            'excel': self._load_excel,
+            'json': self._load_json,
+            'xml': self._load_xml,
+            'parquet': self._load_parquet,
+            'text': self._load_text,
+            'zip': self._load_zip
+        }.get(self.file_info['type'], self._load_unknown)
+        
+        success = loader(file)
+        if success:
+            self._cache_data()
+        return success
+        
+    except Exception as e:
+        st.error(f"Error loading file: {str(e)}")
+        return False 
     def _load_csv(self, file):
         # Try multiple encodings and delimiters
         encodings = ['utf-8', 'latin-1', 'cp1252']
