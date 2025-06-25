@@ -209,7 +209,46 @@ st.set_page_config(
 )
 
 # Initialize app state and theme
-app_state = AppState()
+
+class AppState:
+    def __init__(self):
+        # Initialize all session state variables
+        if 'theme' not in st.session_state:
+            st.session_state.theme = 'light'
+        if 'cached_data' not in st.session_state:
+            st.session_state.cached_data = {}
+        if 'analysis_history' not in st.session_state:
+            st.session_state.analysis_history = []
+        if 'current_tab' not in st.session_state:
+            st.session_state.current_tab = "Data Overview"
+    
+    @property
+    def theme(self):
+        return st.session_state.theme
+    
+    @theme.setter
+    def theme(self, value):
+        st.session_state.theme = value
+    
+    @property
+    def current_tab(self):
+        return st.session_state.current_tab
+    
+    @current_tab.setter
+    def current_tab(self, value):
+        st.session_state.current_tab = value
+    
+    def cache_data(self, key, value):
+        st.session_state.cached_data[key] = value
+    
+    def get_cached_data(self, key):
+        return st.session_state.cached_data.get(key)
+    
+    def add_to_history(self, entry):
+        st.session_state.analysis_history.append(entry)
+    
+    def get_history(self):
+        return st.session_state.analysis_historyapp_state = AppState()
 ThemeManager.apply_theme(app_state.get_theme())
 
 class EnhancedDataAnalyzer:
