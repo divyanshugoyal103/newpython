@@ -11,4 +11,4 @@ statsmodels
 plotly
 scikit-learn
 matplotlib
-sqllite3
+
