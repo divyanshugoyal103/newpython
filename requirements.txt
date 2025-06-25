@@ -5,7 +5,8 @@ xlsxwriter
 streamlit-aggrid
 pandas
 numpy
-scipy
+scipy==1.11.4
+streamlit
 statsmodels
 plotly
 scikit-learn
