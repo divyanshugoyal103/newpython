@@ -715,7 +715,21 @@ class UniversalDataAnalyzerPro:
                     st.error(f"Connection failed: {str(e)}")
     
     def basic_info(self):
-               with col1:
+        """Display basic information about the dataset"""
+        st.markdown('<div class="section-header">📋 Dataset Overview</div>', unsafe_allow_html=True)
+        
+        if isinstance(self.data, dict):  # Multiple Excel sheets
+            for sheet_name, df in self.data.items():
+                st.subheader(f"Sheet: {sheet_name}")
+                self._display_basic_info(df)
+        else:
+            self._display_basic_info(self.data)
+    
+    def _display_basic_info(self, df):
+        """Helper function to display basic info for a dataframe"""
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
             st.metric("Rows", f"{len(df):,}")
         with col2:
             st.metric("Columns", len(df.columns))
