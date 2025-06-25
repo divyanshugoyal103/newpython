@@ -222,46 +222,29 @@ class EnhancedDataAnalyzer:
             'sheets': None
         }
         self.analysis_results = {}
-    
-   def load_data(self, file):
-        """Load data from file with caching and type detection"""
-        self.file_info = {
-        'name': file.name,
-        'type': self._detect_file_type(file),
-        'hash': hashlib.md5(file.read()).hexdigest(),
-        'sheets': None
-    }
-    file.seek(0)  # Reset file pointer after reading for hash
-    
-    # Check cache first
-    cached = app_state.get_cached_data(self.file_info['hash'])
-    if cached:
-        st.info("📦 Loading from cache...")
-        self.data = cached['data']
-        self.file_info.update(cached['file_info'])
-        return True
-    
-    try:
-        loader = {
-            'csv': self._load_csv,
-            'excel': self._load_excel,
-            'json': self._load_json,
-            'xml': self._load_xml,
-            'parquet': self._load_parquet,
-            'text': self._load_text,
-            'zip': self._load_zip
-        }.get(self.file_info['type'], self._load_unknown)
-        
-        success = loader(file)
-        if success:
-            self._cache_data()
-        return success
-        
-    except Exception as e:
-        st.error(f"Error loading file: {str(e)}")
-        return False 
+
+    def _detect_file_type(self, file):
+        """Detect file type based on extension"""
+        filename = file.name.lower()
+        if filename.endswith(('.csv', '.tsv')):
+            return 'csv'
+        elif filename.endswith(('.xlsx', '.xls')):
+            return 'excel'
+        elif filename.endswith('.json'):
+            return 'json'
+        elif filename.endswith('.xml'):
+            return 'xml'
+        elif filename.endswith('.txt'):
+            return 'text'
+        elif filename.endswith('.parquet'):
+            return 'parquet'
+        elif filename.endswith('.zip'):
+            return 'zip'
+        else:
+            return 'unknown'
+
     def _load_csv(self, file):
-        # Try multiple encodings and delimiters
+        """Load CSV file with multiple encoding attempts"""
         encodings = ['utf-8', 'latin-1', 'cp1252']
         delimiters = [',', ';', '\t', '|']
         
@@ -276,8 +259,9 @@ class EnhancedDataAnalyzer:
                 except:
                     continue
         return False
-    
+
     def _load_excel(self, file):
+        """Load Excel file with support for multiple sheets"""
         try:
             excel_file = pd.ExcelFile(file)
             sheets = excel_file.sheet_names
@@ -291,8 +275,163 @@ class EnhancedDataAnalyzer:
         except Exception as e:
             st.error(f"Excel loading error: {str(e)}")
             return False
-    
-    # [Other loader methods (_load_json, _load_xml, etc.) would follow similar patterns]
+
+    def _load_json(self, file):
+        """Load JSON file"""
+        try:
+            file.seek(0)
+            json_data = json.load(file)
+            if isinstance(json_data, list):
+                self.data = pd.json_normalize(json_data)
+            elif isinstance(json_data, dict):
+                self.data = pd.json_normalize([json_data])
+            else:
+                self.data = pd.DataFrame({'data': [json_data]})
+            self.data = self._enhance_data(self.data)
+            return True
+        except Exception as e:
+            st.error(f"JSON loading error: {str(e)}")
+            return False
+
+    def _load_xml(self, file):
+        """Load XML file"""
+        try:
+            file.seek(0)
+            tree = ET.parse(file)
+            root = tree.getroot()
+            data_list = []
+            for child in root:
+                data_dict = {}
+                for subchild in child:
+                    data_dict[subchild.tag] = subchild.text
+                data_list.append(data_dict)
+            self.data = pd.DataFrame(data_list)
+            self.data = self._enhance_data(self.data)
+            return True
+        except Exception as e:
+            st.error(f"XML loading error: {str(e)}")
+            return False
+
+    def _load_parquet(self, file):
+        """Load Parquet file"""
+        try:
+            file.seek(0)
+            self.data = pd.read_parquet(file)
+            self.data = self._enhance_data(self.data)
+            return True
+        except Exception as e:
+            st.error(f"Parquet loading error: {str(e)}")
+            return False
+
+    def _load_text(self, file):
+        """Load text file"""
+        try:
+            file.seek(0)
+            content = file.read().decode('utf-8')
+            lines = content.split('\n')
+            self.data = pd.DataFrame({'text': lines})
+            return True
+        except Exception as e:
+            st.error(f"Text file loading error: {str(e)}")
+            return False
+
+    def _load_zip(self, file):
+        """Load data from ZIP archive"""
+        try:
+            file.seek(0)
+            with zipfile.ZipFile(file, 'r') as zip_ref:
+                file_list = zip_ref.namelist()
+                st.info(f"ZIP file contains: {', '.join(file_list)}")
+                for filename in file_list:
+                    if filename.endswith(('.csv', '.xlsx', '.json')):
+                        with zip_ref.open(filename) as extracted_file:
+                            if filename.endswith('.csv'):
+                                return self._load_csv(extracted_file)
+                            elif filename.endswith('.xlsx'):
+                                return self._load_excel(extracted_file)
+                            elif filename.endswith('.json'):
+                                return self._load_json(extracted_file)
+                return False
+        except Exception as e:
+            st.error(f"ZIP file loading error: {str(e)}")
+            return False
+
+    def _load_unknown(self, file):
+        """Handler for unknown file types"""
+        st.error(f"Unsupported file type: {self.file_info['type']}")
+        return False
+
+    def _enhance_data(self, df):
+        """Perform automatic data enhancements"""
+        # Date detection
+        date_cols = [col for col in df.columns 
+                    if any(keyword in col.lower() 
+                          for keyword in ['date', 'time', 'created', 'modified'])]
+        
+        for col in date_cols:
+            try:
+                df[col] = pd.to_datetime(df[col], errors='coerce')
+            except:
+                pass
+        
+        # Numeric conversion
+        for col in df.select_dtypes(include=['object']).columns:
+            try:
+                df[col] = pd.to_numeric(df[col], errors='ignore')
+            except:
+                pass
+        
+        return df
+
+    def _cache_data(self):
+        """Cache the loaded data"""
+        cache_entry = {
+            'data': self.data,
+            'file_info': self.file_info,
+            'timestamp': datetime.now()
+        }
+        app_state.cache_data(self.file_info['hash'], cache_entry)
+
+    def load_data(self, file):
+        """Main data loading method with caching"""
+        if file is None:
+            return False
+            
+        self.file_info = {
+            'name': file.name,
+            'type': self._detect_file_type(file),
+            'hash': hashlib.md5(file.read()).hexdigest(),
+            'sheets': None
+        }
+        file.seek(0)  # Reset file pointer after reading for hash
+        
+        # Check cache first
+        cached = app_state.get_cached_data(self.file_info['hash'])
+        if cached:
+            st.info("📦 Loading from cache...")
+            self.data = cached['data']
+            self.file_info.update(cached['file_info'])
+            return True
+        
+        try:
+            loader = {
+                'csv': self._load_csv,
+                'excel': self._load_excel,
+                'json': self._load_json,
+                'xml': self._load_xml,
+                'parquet': self._load_parquet,
+                'text': self._load_text,
+                'zip': self._load_zip
+            }.get(self.file_info['type'], self._load_unknown)
+            
+            success = loader(file)
+            if success:
+                self._cache_data()
+            return success
+            
+        except Exception as e:
+            st.error(f"Error loading file: {str(e)}")
+            return False    # [Other loader methods (_load_json, _load_xml, etc.) would follow similar patterns]
     
     def _enhance_data(self, df):
         # Enhanced date detection and type conversion
