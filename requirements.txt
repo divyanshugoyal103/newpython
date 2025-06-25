@@ -6,3 +6,5 @@ seaborn
 openpyxl 
 xlsxwriter
 streamlit-aggrid
+ scipy
+scikit-learn
