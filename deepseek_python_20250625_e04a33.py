@@ -224,8 +224,8 @@ class EnhancedDataAnalyzer:
         self.analysis_results = {}
     
    def load_data(self, file):
-    """Load data from file with caching and type detection"""
-    self.file_info = {
+        """Load data from file with caching and type detection"""
+        self.file_info = {
         'name': file.name,
         'type': self._detect_file_type(file),
         'hash': hashlib.md5(file.read()).hexdigest(),
