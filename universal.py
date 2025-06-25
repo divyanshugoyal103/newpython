@@ -185,27 +185,21 @@ class UniversalDataAnalyzer:
         else:
             self._display_basic_info(self.data)
     
+    def _display_basic_info(self, df):
+        """Helper function to display basic info for a dataframe"""
+        col1, col2, col3, col4 = st.columns(4)
+        
         with col1:
-            st.markdown('<div class="metric-container">', unsafe_allow_html=True)
-            st.metric("📊 Total Rows", f"{len(df):,}")
-            st.markdown('</div>', unsafe_allow_html=True)
-        
+            st.metric("Rows", f"{len(df):,}")
         with col2:
-            st.markdown('<div class="metric-container">', unsafe_allow_html=True)
-            st.metric("📋 Total Columns", len(df.columns))
-            st.markdown('</div>', unsafe_allow_html=True)
-        
+            st.metric("Columns", len(df.columns))
         with col3:
-            st.markdown('<div class="metric-container">', unsafe_allow_html=True)
-            memory_usage = df.memory_usage(deep=True).sum() / 1024**2
-            st.metric("💾 Memory Usage", f"{memory_usage:.2f} MB")
-            st.markdown('</div>', unsafe_allow_html=True)
-        
+            st.metric("Memory Usage", f"{df.memory_usage(deep=True).sum() / 1024**2:.1f} MB")
         with col4:
-            st.markdown('<div class="metric-container">', unsafe_allow_html=True)
-            missing_percentage = (df.isnull().sum().sum() / (len(df) * len(df.columns))) * 100
-            st.metric("❓ Missing Data", f"{missing_percentage:.2f}%")
-            st.markdown('</div>', unsafe_allow_html=True)        # Data types
+            missing_pct = (df.isnull().sum().sum() / (len(df) * len(df.columns)) * 100)
+            st.metric("Missing Data", f"{missing_pct:.1f}%")
+        
+        # Data types
         st.subheader("Column Information")
         col_info = pd.DataFrame({
             'Column': df.columns,
