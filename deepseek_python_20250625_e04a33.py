@@ -447,10 +447,10 @@ class EnhancedDataAnalyzer:
     
     # [Rest of the EnhancedDataAnalyzer class implementation...]
 
-# Main application class with improved UI/UX
-class DataAnalyzerApp:
+# Main application class with improved UI/UXclass DataAnalyzerApp:
     def __init__(self):
         self.analyzer = EnhancedDataAnalyzer()
+        self.state = AppState()  # Initialize AppState
         self.setup_sidebar()
         self.setup_main()
     
@@ -458,12 +458,10 @@ class DataAnalyzerApp:
         with st.sidebar:
             st.title("🔧 Settings")
             
-            # Theme toggle
-            current_theme = app_state.get_theme()
-            if st.button(f"Switch to {'Dark' if current_theme == 'light' else 'Light'} Theme"):
-                new_theme = 'dark' if current_theme == 'light' else 'light'
-                app_state.set_theme(new_theme)
-                ThemeManager.apply_theme(new_theme)
+            # Theme toggle using the state property
+            if st.button(f"Switch to {'Dark' if self.state.theme == 'light' else 'Light'} Theme"):
+                self.state.theme = 'dark' if self.state.theme == 'light' else 'light'
+                ThemeManager.apply_theme(self.state.theme)
                 st.experimental_rerun()
             
             # File upload
@@ -477,7 +475,9 @@ class DataAnalyzerApp:
             if uploaded_file:
                 if self.analyzer.load_data(uploaded_file):
                     st.success(f"Successfully loaded {uploaded_file.name}")
-                    app_state.current_tab = "Data Overview"
+                    self.state.current_tab = "Data Overview"  # Use state property
+    
+    # ... rest of your DataAnalyzerApp methods ...
             
             # Database connection option
             if st.checkbox("Connect to Database"):
