@@ -3,3 +3,6 @@ plotly
 pandas
 numpy
 seaborn
+openpyxl 
+xlsxwriter
+st-aggrid
