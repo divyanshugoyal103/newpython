@@ -185,7 +185,7 @@ class UniversalDataAnalyzer:
         else:
             self._display_basic_info(self.data)
     
-    def _display_basic_info(self, df):
+       def _display_basic_info(self, df):
         """Helper function to display basic info for a dataframe"""
         col1, col2, col3, col4 = st.columns(4)
         
@@ -194,11 +194,51 @@ class UniversalDataAnalyzer:
         with col2:
             st.metric("Columns", len(df.columns))
         with col3:
-            st.metric("Memory Usage", f"{df.memory_usage(deep=True).sum() / 1024**2:.1f} MB")
+            st.metric("Missing Values", f"{df.isnull().sum().sum():,}")
         with col4:
-            missing_pct = (df.isnull().sum().sum() / (len(df) * len(df.columns)) * 100)
-            st.metric("Missing Data", f"{missing_pct:.1f}%")
+            st.metric("Memory Usage", f"{df.memory_usage(deep=True).sum() / 1024**2:.2f} MB")
         
+        # Display data preview
+        st.subheader("Data Preview")
+        st.dataframe(df.head(), use_container_width=True)
+        
+        # Display column information
+        st.subheader("Column Information")
+        
+        col_info = pd.DataFrame({
+            'Column': df.columns,
+            'Type': df.dtypes,
+            'Missing %': (df.isnull().mean() * 100).round(2),
+            'Unique Values': df.nunique()
+        })
+        
+        st.dataframe(col_info, use_container_width=True)
+        
+        # Show detailed statistics
+        st.subheader("Detailed Statistics")
+        tab1, tab2 = st.tabs(["Numeric Columns", "Categorical Columns"])
+        
+        with tab1:
+            numeric_cols = df.select_dtypes(include=[np.number]).columns
+            if len(numeric_cols) > 0:
+                st.dataframe(df[numeric_cols].describe().T, use_container_width=True)
+            else:
+                st.info("No numeric columns found")
+        
+        with tab2:
+            categorical_cols = df.select_dtypes(include=['object', 'category']).columns
+            if len(categorical_cols) > 0:
+                cat_stats = []
+                for col in categorical_cols:
+                    cat_stats.append({
+                        'Column': col,
+                        'Unique Values': df[col].nunique(),
+                        'Most Common': df[col].mode().iloc[0] if not df[col].mode().empty else 'N/A',
+                        'Frequency': df[col].value_counts().iloc[0] if not df[col].mode().empty else 0
+                    })
+                st.dataframe(pd.DataFrame(cat_stats), use_container_width=True)
+            else:
+                st.info("No categorical columns found")     
         # Data types
         st.subheader("Column Information")
         col_info = pd.DataFrame({
