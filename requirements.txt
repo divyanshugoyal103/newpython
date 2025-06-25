@@ -5,4 +5,4 @@ numpy
 seaborn
 openpyxl 
 xlsxwriter
-
+streamlit-aggrid
