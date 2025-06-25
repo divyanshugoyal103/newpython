@@ -3,14 +3,20 @@ import pandas as pd
 import numpy as np
 
 st.set_page_config(page_title="Data Cleaning App", layout="wide")
-
 st.title("🧹 Data Cleaning App")
 
 # 1. File upload
 uploaded_file = st.file_uploader("Upload your CSV file", type=["csv"])
 
 if uploaded_file:
-    df = pd.read_csv(uploaded_file)
+    # 2. Encoding selector
+    encoding_option = st.selectbox("Select file encoding", ["utf-8", "latin1", "ISO-8859-1", "cp1252"])
+    try:
+        df = pd.read_csv(uploaded_file, encoding=encoding_option)
+    except Exception as e:
+        st.error(f"Failed to read file: {e}")
+        st.stop()
+
     st.subheader("Preview of Raw Data")
     st.dataframe(df.head())
 
@@ -19,7 +25,7 @@ if uploaded_file:
 
     st.subheader("Data Cleaning Options")
 
-    # Drop or fill NA
+    # Handle null values
     na_option = st.selectbox("Handle Missing Values", ["Do nothing", "Drop rows", "Fill with mean", "Fill with zero"])
     if na_option == "Drop rows":
         df.dropna(inplace=True)
@@ -29,7 +35,7 @@ if uploaded_file:
         df.fillna(0, inplace=True)
 
     # Remove duplicates
-    if st.checkbox("Remove Duplicates"):
+    if st.checkbox("Remove Duplicate Rows"):
         df.drop_duplicates(inplace=True)
 
     # Rename columns
@@ -43,7 +49,7 @@ if uploaded_file:
     # Change data types
     st.subheader("Change Column Data Types")
     for col in df.select_dtypes(include=["object", "int64", "float64"]).columns:
-        dtype = st.selectbox(f"Change data type of '{col}'", ["No change", "string", "int", "float"])
+        dtype = st.selectbox(f"Change data type of '{col}'", ["No change", "string", "int", "float"], key=col)
         try:
             if dtype == "string":
                 df[col] = df[col].astype(str)
@@ -54,9 +60,13 @@ if uploaded_file:
         except Exception as e:
             st.warning(f"Could not convert column {col}: {e}")
 
-    # String cleaning
+    # String cleaning options
+    st.subheader("Text Cleaning Options")
     if st.checkbox("Trim whitespace and lowercase strings"):
         df = df.apply(lambda x: x.str.strip().str.lower() if x.dtypes == "object" else x)
+
+    if st.checkbox("Capitalize first letter (title-case)"):
+        df = df.apply(lambda x: x.str.title() if x.dtypes == "object" else x)
 
     st.subheader("🔍 Cleaned Data Preview")
     st.dataframe(df.head())
