@@ -112,21 +112,21 @@ if uploaded_file:
             summary_df = df.groupby(group_by_col)[agg_col].agg(['count', 'mean', 'sum']).reset_index()
             st.dataframe(summary_df)
 
-        # ---------- 🔥 Correlation Heatmap ----------
-        st.subheader("🔗 Correlation Heatmap")
-        if len(numeric_cols) >= 2:
-            corr = df[numeric_cols].corr()
-            fig = ff.create_annotated_heatmap(
-                z=corr.values,
-                x=list(corr.columns),
-                y=list(corr.index),
-                annotation_text=corr.round(2).astype(str).values,
-                showscale=True,
-                colorscale='Viridis'
-            )
-            st.plotly_chart(fig, use_container_width=True)
+      # ---------- 🔥 Correlation Heatmap ----------
+st.subheader("🔗 Correlation Heatmap")
 
-    except Exception as e:
-        st.error(f"⚠️ Error: {str(e)}")
+# Ensure enough numeric columns
+numeric_cols = df.select_dtypes(include=['float64', 'int64']).columns.tolist()
+if len(numeric_cols) >= 2:
+    corr = df[numeric_cols].corr().round(2)
+
+    fig = px.imshow(
+        corr,
+        text_auto=True,
+        color_continuous_scale='Viridis',
+        aspect='auto',
+        title="Correlation Heatmap"
+    )
+    st.plotly_chart(fig, use_container_width=True)
 else:
-    st.info("Upload a CSV or Excel file to begin analysis.")
+    st.info("Need at least two numeric columns for correlation heatmap.")
