@@ -43,7 +43,7 @@ def load_data():
     """Load and preprocess the airline dataset"""
     try:
         # Update this path to your dataset location
-        df = pd.read_csv('Airline Dataset Updated v2.csv')
+        df = pd.read_csv('Airline Dataset Updated -v2.csv')
         
         # Clean column names
         df.columns = df.columns.str.strip()
