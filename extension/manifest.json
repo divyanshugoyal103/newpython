@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "Tab Session Tracker",
+  "version": "0.1.0",
+  "background": {
+    "service_worker": "src/background/service-worker.js",
+    "type": "module"
+  },
+  "permissions": ["tabs", "storage"]
+}
