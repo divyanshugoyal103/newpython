@@ -24,6 +24,7 @@ import base64
 from collections import Counter
 import sqlite3
 import hashlib
+from session_replay import SessionReplayManager
 warnings.filterwarnings('ignore')
 
 # Additional imports for new features
@@ -70,6 +71,10 @@ if 'cached_data' not in st.session_state:
     st.session_state.cached_data = {}
 if 'analysis_history' not in st.session_state:
     st.session_state.analysis_history = []
+if 'saved_tab_sessions' not in st.session_state:
+    st.session_state.saved_tab_sessions = []
+if 'active_replay_session_id' not in st.session_state:
+    st.session_state.active_replay_session_id = None
 
 # Configure Streamlit page
 st.set_page_config(
@@ -164,6 +169,7 @@ class UniversalDataAnalyzerPro:
         self.file_type = None
         self.file_name = None
         self.file_hash = None
+        self.session_replay = SessionReplayManager()
         
     def get_file_hash(self, file_content):
         """Generate hash for file caching"""
@@ -540,6 +546,7 @@ class UniversalDataAnalyzerPro:
                 )
             
             elif report_format == "HTML":
+                html_body = report_content.replace(chr(10), '<br>').replace('##', '<h2>').replace('#', '<h1>')
                 html_content = f"""
                 <!DOCTYPE html>
                 <html>
@@ -555,7 +562,7 @@ class UniversalDataAnalyzerPro:
                     </style>
                 </head>
                 <body>
-                    {report_content.replace('\n', '<br>').replace('##', '<h2>').replace('#', '<h1>')}
+                    {html_body}
                 </body>
                 </html>
                 """
@@ -1362,6 +1369,63 @@ class UniversalDataAnalyzerPro:
         except Exception as e:
             st.error(f"Decomposition failed: {str(e)}")
     
+
+    def _build_current_tab_snapshot(self):
+        """Build a UI-independent tab structure for save/replay."""
+        return [
+            {"tab_id": "data_cleaning", "title": "🧹 Data Cleaning", "order": 0, "parent_id": None},
+            {"tab_id": "eda", "title": "🔍 EDA", "order": 1, "parent_id": None},
+            {"tab_id": "advanced", "title": "🧪 Advanced", "order": 2, "parent_id": None},
+            {"tab_id": "advanced_numeric", "title": "Numeric Columns", "order": 0, "parent_id": "advanced"},
+            {"tab_id": "advanced_categorical", "title": "Categorical Columns", "order": 1, "parent_id": "advanced"},
+            {"tab_id": "nlp", "title": "📝 NLP", "order": 3, "parent_id": None},
+            {"tab_id": "report", "title": "📄 Report", "order": 4, "parent_id": None},
+        ]
+
+    def save_tab_session(self, session_name):
+        """Save tab structure into session history."""
+        snapshot = self._build_current_tab_snapshot()
+        session_entry = self.session_replay.save_session(session_name=session_name, tabs=snapshot)
+        st.session_state.saved_tab_sessions.append(session_entry)
+        return session_entry
+
+    def replay_tab_session(self, saved_session):
+        """Compute replay plan from a saved session."""
+        replay_order = self.session_replay.replay_order(saved_session["tabs"])
+        replay_tree = self.session_replay.replay_tree(saved_session["tabs"])
+        return replay_order, replay_tree
+
+    def render_replay_session(self):
+        """UI wrapper for session replay controls and output."""
+        st.sidebar.markdown('<div class="section-header">🎬 Session Replay</div>', unsafe_allow_html=True)
+
+        session_name = st.sidebar.text_input("Session name", value=f"Session {datetime.now().strftime('%H:%M:%S')}")
+        if st.sidebar.button("💾 Save Session"):
+            saved = self.save_tab_session(session_name=session_name)
+            st.sidebar.success(f"Saved: {saved['session_name']}")
+
+        if not st.session_state.saved_tab_sessions:
+            st.sidebar.caption("No saved sessions yet")
+            return
+
+        selected_index = st.sidebar.selectbox(
+            "Replay session",
+            range(len(st.session_state.saved_tab_sessions)),
+            format_func=lambda i: f"{st.session_state.saved_tab_sessions[i]['saved_at']} - {st.session_state.saved_tab_sessions[i]['session_name']}"
+        )
+
+        if st.sidebar.button("▶️ Replay Session"):
+            selected = st.session_state.saved_tab_sessions[selected_index]
+            replay_order, replay_tree = self.replay_tab_session(selected)
+            st.session_state.active_replay_session_id = selected["session_id"]
+
+            st.markdown('<div class="section-header">🔁 Replay Session</div>', unsafe_allow_html=True)
+            st.write(f"Session: **{selected['session_name']}** ({selected['saved_at']})")
+            st.write("Recreated tab order:")
+            st.dataframe(pd.DataFrame(replay_order), use_container_width=True)
+            st.write("Parent-child hierarchy:")
+            st.json(replay_tree)
+
     def save_analysis(self):
         """Save current analysis to history"""
         if self.data is None:
@@ -1433,6 +1497,9 @@ def main():
     # Database connection option
     if st.sidebar.checkbox("Connect to Database"):
         analyzer.database_connector()
+
+    # Session save/replay controls
+    analyzer.render_replay_session()
     
     # Load data if file uploaded
     if uploaded_file:
